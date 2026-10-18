@@ -1,0 +1,15 @@
+# Copy to src/main/resources/application-local.properties (untracked) or set
+# the same values as environment variables. Placeholder values only.
+
+MYSQL_USER=gameflix_user
+MYSQL_PASSWORD=change-me
+
+# At least 32 random bytes, for example: openssl rand -base64 48
+JWT_SECRET=replace-with-a-long-random-string
+
+CORS_ORIGIN=http://localhost:3000
+
+# If using application-local.properties instead of env vars, use the full keys:
+# spring.datasource.username=gameflix_user
+# spring.datasource.password=change-me
+# app.jwt.secret=replace-with-a-long-random-string
