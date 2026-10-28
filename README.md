@@ -137,6 +137,89 @@ random email, and after each test the users it created are deleted. There are 7 
 
 Screenshots are in the Word document submitted in Canvas:
 
+## Running with Docker
+The service can also run in Docker. GameFlix and MySQL 8.0 run in two separate containers that
+Docker Compose starts together. Compose puts them on a private network, keeps the database in a
+named volume, waits until MySQL is healthy, and only then starts the Spring Boot app.
+
+### Prerequisites
+Docker Desktop (running), Java 21 and Maven (I used the one built into IntelliJ).
+
+### Files added for Docker
+| File | Purpose |
+|---|---|
+| `Dockerfile` | Builds the app image: a Java 21 runtime image, the Maven-built JAR copied in as `app.jar`, started with `java -jar`. |
+| `compose.yaml` | Defines the `mysql` and `app` services, the `app-net` network and the `mysql_data` volume. |
+| `.dockerignore` | Keeps `.git`, IDE files and `.env` out of the Docker build. `target/` is not ignored because the Dockerfile copies the JAR from it. |
+| `.env.example` | Lists every variable Compose needs, with placeholder values only. |
+
+### Setup
+1. Copy `.env.example` to `.env`.
+2. Replace the placeholder passwords with my own classroom-only values.
+3. Generate the JWT secret with `openssl rand -base64 48` and put it in `JWT_SECRET`.
+
+`.env` is listed in `.gitignore` and must never be committed.
+
+### Build and run
+```
+mvn clean package -DskipTests
+docker compose up --build -d
+docker compose ps
+```
+The first command builds the JAR. Docker copies whatever JAR is in `target/`, so it has to be
+rebuilt after every code or configuration change. The second builds the image and starts both
+containers in the background. `docker compose ps` should show `mysql` as healthy and `app` as running.
+If `app` is missing from the list it exited, and `docker compose logs app --tail 40` shows why.
+
+### Testing the containers
+I registered a user through the containerized app:
+```
+curl -i -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"docker@example.com","password":"DockerTest123!","displayName":"Docker Test"}'
+```
+The app returned `201` with the new user's id, email and display name and no password. Then I
+checked the MySQL container's database from the command line:
+```
+docker compose exec mysql mysql -u<MYSQL_USER> -p gameflix
+SHOW TABLES;
+SELECT id, email, display_name, created_at, LEFT(password, 12) AS hash_start FROM users;
+```
+The `users` table existed (Hibernate created it) and held the new account. The password column
+started with `{bcrypt}$2a$`, so only a hash was stored.
+
+### Data survives restarts
+`docker compose down` removes the containers and the network but keeps the `mysql_data` volume. After
+`docker compose down` and `docker compose up -d`, the same user was still in the database.
+`docker compose down -v` also deletes the volume and permanently erases the database, so I only use
+it when I want a fresh one.
+
+### Design choices
+- **Service name instead of `localhost`:** inside a container, `localhost` means the container
+  itself. The app reaches the database at `mysql:3306`, using the Compose service name.
+- **Environment variables override the defaults:** `application.properties` uses
+  `${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/gameflix?...}`. Running from IntelliJ uses the
+  `localhost` default, and Compose sets `SPRING_DATASOURCE_URL` to the `mysql` address in Docker.
+- **Secrets stay out of the repo and the image:** the database passwords, `JWT_SECRET` and
+  `CORS_ORIGIN` come from `.env` through `compose.yaml`. `.env` is git-ignored and in `.dockerignore`.
+- **Health check:** `depends_on` with `condition: service_healthy` keeps the app from starting until
+  `mysqladmin ping` succeeds, because MySQL needs time to initialize.
+- **Ports:** MySQL is published on host port 3307 so it does not clash with the MySQL already
+  running on my Mac at 3306. The app uses 8080.
+- **First-run settings:** `MYSQL_DATABASE`, `MYSQL_USER` and the passwords only apply when the volume
+  is empty, so changing them later requires `docker compose down -v` to take effect.
+
+### Problem I hit
+The first start failed with `Access denied for user 'root'`, even though the app should log in as
+`gameflix_user`. The log showed the connection itself worked (so the `mysql` hostname and network
+were fine) but the login was wrong. Looking at the file inside the JAR with
+`unzip -p target/gameflix-0.0.1-SNAPSHOT.jar BOOT-INF/classes/application.properties` showed that
+when I edited the datasource URL, `spring.datasource.username=${MYSQL_USER}` had been joined onto
+the end of the URL line, so there was no username setting. I put it back on its own line, rebuilt
+the JAR, and ran `docker compose up --build -d` again.
+
+Screenshots of the Docker steps are in the Word document submitted in Canvas.
+
 ## AI-use statement
 I used Claude (an AI assistant) to generate the project shell to match my professor's demo project,
 to help write the register, login and token code and the MockMvc tests, and to troubleshoot setup
@@ -147,3 +230,8 @@ measured the bcrypt timings on my own machine.
 
 One thing I changed: the generated code used bcrypt's default work factor of 10. After measuring 10,
 12 and 14, I chose 12 (see Password hashing).
+
+For the Docker assignment I used Claude to explain the handout and to help check the Dockerfile and
+`compose.yaml`. I ran every command myself, found the cause of the `Access denied` error in the
+packaged JAR, and verified the result with `docker compose ps`, the register request and a query
+against the database inside the container.
