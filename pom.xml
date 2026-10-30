@@ -15,6 +15,7 @@
     <description>GameFlix login and registration service</description>
     <properties>
         <java.version>21</java.version>
+        <tomcat.version>11.0.25</tomcat.version>
     </properties>
     <dependencies>
         <!-- REST controllers (same starter as the demo) -->
